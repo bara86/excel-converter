@@ -6,7 +6,8 @@ from enum import IntEnum, auto
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils.cell import get_column_letter
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog
+from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog, \
+    QMessageBox
 
 if TYPE_CHECKING:
     from openpyxl.worksheet.worksheet import Worksheet
@@ -25,17 +26,73 @@ class Colonne(IntEnum):
     INDICATORE = auto()
     NUMERATORE = auto()
     DENOMINATORE = auto()
+    PERCENTUALE = auto()
+    PESO = auto()
+    PERCENTUALE_PESATA = auto()
 
 
 class Indicatore(NamedTuple):
     stringa_uscita: str
     nome_indicatore: str
+    peso: int
 
 
 mappa_requisito_indicatori: dict[str, list[Indicatore]] = {
-    'DISPOSITIVI MEDICI': [Indicatore('MANUTENZIONE TSLB', 'manutenzione_tslb')],
-    'NEOINSERITO / NEOASSUNTO': [Indicatore('PIANO INSERIMENTO NEOASSUNTO', 'neoassunto'),
-                                 Indicatore('PIANO INSERIMENTO NEOINSERITO', 'neoinserito')]
+    'IDENTIFICAZIONE UTENTE': [
+        Indicatore(stringa_uscita='IDENTIFICAZIONE ATTIVA',
+                   nome_indicatore='ident_utente', peso=2)],
+    'PREVENZIONE CADUTE': [
+        Indicatore(stringa_uscita='SICUREZZA AMBIENTIE PRESIDI',
+                   nome_indicatore='lista_item', peso=3),
+        Indicatore(stringa_uscita='POST CADUTA',
+                   nome_indicatore='cadute', peso=3)],
+    'SORVEGLIANZA INFEZIONI': [
+        Indicatore(stringa_uscita='GEL LAVAMANI POSTAZIONE',
+                   nome_indicatore='gel', peso=4),
+        Indicatore(stringa_uscita='GEL LAVAMANI BORSE',
+                   nome_indicatore='borse', peso=4),
+        Indicatore(stringa_uscita='GUANTI POSTAZIONE',
+                   nome_indicatore='guanti', peso=4),
+        Indicatore(stringa_uscita='GUANTI BORSE',
+                   nome_indicatore='guanti_borse', peso=4),
+        Indicatore(stringa_uscita='POSTER MANI PULITE',
+                   nome_indicatore='poster', peso=4),
+        Indicatore(stringa_uscita='POSTER MANI NUDE',
+                   nome_indicatore='maninude', peso=4),
+        Indicatore(stringa_uscita='AZIONI POST MONITORAGGIO',
+                   nome_indicatore='azioni_mani', peso=4)],
+    'DISPOSITIVI MEDICI': [
+        Indicatore(stringa_uscita='MANUALE IN ITALIANO',
+                   nome_indicatore='lingua', peso=4),
+        Indicatore(stringa_uscita='PROGRAMMAZIONE MANUTENZIONE ESTERNA',
+                   nome_indicatore='piano', peso=4),
+        Indicatore(stringa_uscita='EFFETTUAZIONE MANUTENZIONE ESTERNA',
+                   nome_indicatore='manutenzione', peso=4),
+        Indicatore(stringa_uscita='MANUTENZIONE TSLB',
+                   nome_indicatore='tslb', peso=4)],
+    'SICUREZZA EMOCOMPONENTI': [
+        Indicatore(stringa_uscita="CONFORMITA' RICHIESTE",
+                   nome_indicatore='nc', peso=3),
+        Indicatore(stringa_uscita='ETICHETTATURA CAMPIONE STOCCATO',
+                   nome_indicatore='stoc', peso=3)],
+    'SICUREZZA PZ ONCOLOGICO': [
+        Indicatore(stringa_uscita='PRESCRIZIONE FARMACI CTA',
+                   nome_indicatore='presc_CTA', peso=5),
+        Indicatore(stringa_uscita='PREPARAZIONE CTA',
+                   nome_indicatore='prep_CTA_', peso=5)],
+    'RISCHIO FARMACI': [
+        Indicatore(stringa_uscita='ETICHETTATURA LASA',
+                   nome_indicatore='nc_LASA', peso=5),
+        Indicatore(stringa_uscita='ALLOCAZIONE LASA',
+                   nome_indicatore='stoc_LASA', peso=5)],
+    "CONTROLLO QUALITA'": [
+        Indicatore(stringa_uscita='CQ APPARECCHIATURE',
+                   nome_indicatore='checklist', peso=10)],
+    'NEOASSUNTO/NEOINSERITO': [
+        Indicatore(stringa_uscita='PIANO INSERIMENTO NEOASSUNTO',
+                   nome_indicatore='neoassunto', peso=1),
+        Indicatore(stringa_uscita='PIANO INSERIMENTO NEOINSERITO',
+                   nome_indicatore='neoinserito', peso=1)]
 }
 
 
@@ -48,7 +105,7 @@ def cercaRigaColonna(sheet: Worksheet, nome_colonna: str) -> str | None:
 
 def scriviTitoliUscita(sheet: Worksheet) -> None:
     for colonna in Colonne:
-        sheet[f'{get_column_letter(colonna)}1'].value = colonna.name.replace('_', ' ')
+        sheet[f'{get_column_letter(colonna)}1'].value = colonna.name.replace('_', ' ').replace('PERCENTUALE', '%')
 
 
 def converti(path_foglio_ingresso: Path, path_foglio_uscita: Path) -> None:
@@ -74,15 +131,28 @@ def converti(path_foglio_ingresso: Path, path_foglio_uscita: Path) -> None:
 
         for (requisito, indicatori) in mappa_requisito_indicatori.items():
             id_riga = sheet[f"{indice_id}{row}"].value
-            zona_presidio_riga = sheet[f"{indice_zona_presidio}{row}"].value
+            zona_presidio_riga = sheet[f"{indice_zona_presidio}{row}"].value[len('zona '):]
             data_riga = sheet[f"{indice_data}{row}"].value.strftime("%d/%m/%Y")
             professione_riga = sheet[f'{indice_professione}{row}'].value
             soc_riga = sheet[f'{indice_soc}{row}'].value
             sos_riga = sheet[f'{indice_sos}{row}'].value
-            tipologia_presidio_riga = sheet[f'{indice_tipologia_presidio}{row}'].value
+            tipologia_presidio_riga = sheet[f'{indice_tipologia_presidio}{row}'].value[len('presidio '):].capitalize()
             sede_presidio_riga = sheet[f'{indice_sede_presidio}{row}'].value
 
             for contatore_uscita, indicatore in enumerate(indicatori):
+                colonna_num = cercaRigaColonna(sheet, f"params.num_{indicatore.nome_indicatore}")
+                colonna_den = cercaRigaColonna(sheet, f'params.den_{indicatore.nome_indicatore}')
+                colonna_percentuale = cercaRigaColonna(sheet, f'params.%_{indicatore.nome_indicatore}')
+                if colonna_num is None or colonna_den is None or colonna_percentuale is None:
+                    continue
+
+                try:
+                    percentuale = float(sheet[f'{colonna_percentuale}{row}'].value)
+                    sheet_uscita[f'{get_column_letter(Colonne.PERCENTUALE_PESATA)}{riga_uscita}'].value = percentuale * indicatore.peso / 100
+                except ValueError:
+                    percentuale = 'null'
+                    sheet_uscita[f'{get_column_letter(Colonne.PERCENTUALE_PESATA)}{riga_uscita}'].value = 'null'
+
                 sheet_uscita[f"{get_column_letter(Colonne.ID)}{riga_uscita}"].value = id_riga
                 sheet_uscita[f"{get_column_letter(Colonne.DATA)}{riga_uscita}"].value = data_riga
                 sheet_uscita[f'{get_column_letter(Colonne.PROFESSIONE)}{riga_uscita}'].value = professione_riga
@@ -93,11 +163,11 @@ def converti(path_foglio_ingresso: Path, path_foglio_uscita: Path) -> None:
                 sheet_uscita[f'{get_column_letter(Colonne.TIPOLOGIA_PRESIDIO)}{riga_uscita}'].value = tipologia_presidio_riga
                 sheet_uscita[f'{get_column_letter(Colonne.SEDE)}{riga_uscita}'].value = sede_presidio_riga
 
-                colonna_num = cercaRigaColonna(sheet, f"params.num_{indicatore.nome_indicatore}")
-                colonna_den = cercaRigaColonna(sheet, f'params.den_{indicatore.nome_indicatore}')
                 sheet_uscita[f'{get_column_letter(Colonne.INDICATORE)}{riga_uscita}'].value = indicatore.stringa_uscita
                 sheet_uscita[f"{get_column_letter(Colonne.NUMERATORE)}{riga_uscita}"].value = sheet[f'{colonna_num}{row}'].value
                 sheet_uscita[f'{get_column_letter(Colonne.DENOMINATORE)}{riga_uscita}'].value = sheet[f'{colonna_den}{row}'].value
+                sheet_uscita[f'{get_column_letter(Colonne.PERCENTUALE)}{riga_uscita}'].value = percentuale
+                sheet_uscita[f'{get_column_letter(Colonne.PESO)}{riga_uscita}'].value = indicatore.peso
                 riga_uscita += 1
 
     # Aggiusta la larghezza delle colonne
@@ -124,7 +194,7 @@ class Widget(QWidget):
 
         hlayout = QHBoxLayout()
 
-        self.__label_path_foglio_ingresso = QLabel("Nessun foglio selezionato")
+        self.__label_path_foglio_ingresso = QLabel("Nessun foglio di ingresso selezionato")
         self.__bottone_cambio_path_foglio_ingresso = QPushButton("...")
         hlayout.addWidget(self.__label_path_foglio_ingresso)
         hlayout.addWidget(self.__bottone_cambio_path_foglio_ingresso)
@@ -143,21 +213,25 @@ class Widget(QWidget):
         hlayout.addWidget(self.__label_path_foglio_uscita)
         hlayout.addWidget(self.__bottone_cambio_path_foglio_uscita)
 
-        self.__path_foglio_ingresso = Path(r"C:\Users\Bara\Downloads\FILE CONVERT.xlsx")
-        self.__path_foglio_uscita = Path(r"C:\Users\Bara\Downloads\file_convertito.xlsx")
+        self.__path_foglio_ingresso = None
+        self.__path_foglio_uscita = None
 
         layout.addLayout(hlayout)
 
         self.__bottone_converti = QPushButton("Converti")
-        self.__bottone_converti.setEnabled(True)
+        self.__bottone_converti.setEnabled(False)
         self.__bottone_converti.clicked.connect(self.__converti)
         layout.addWidget(self.__bottone_converti)
 
     def __converti(self):
         converti(self.__path_foglio_ingresso, self.__path_foglio_uscita)
 
+        QMessageBox.information(self,
+                                "Conversione completata",
+                                f"La conversione è stata completata nel file\n{self.__path_foglio_uscita}")
+
     def __updateStatoBottoneConverti(self):
-        self.__bottone_converti.setEnabled(not (self.__label_path_foglio_uscita is not None and self.__label_path_foglio_ingresso is not None))
+        self.__bottone_converti.setEnabled(self.__path_foglio_uscita is not None and self.__path_foglio_ingresso is not None)
 
     def __selezionePathIngresso(self):
         fnames, _ = QFileDialog.getOpenFileNames(self, "Seleziona il file di ingresso", filter="Excel (*.xls *.xlsx)")
