@@ -3,14 +3,14 @@ from pathlib import Path
 
 from PySide6.QtCore import QUrl
 
-from main import converti
+from convertitore import converti
 
 
 class TestGenerazione(unittest.TestCase):
 
     def testConverti(self):
-        path_foglio_ingresso = Path(r"C:\Users\Bara\Downloads\FILE CONVERT.xlsx")
-        path_foglio_uscita = Path(r"C:\Users\Bara\Downloads\file_convertito.xlsx")
+        path_foglio_ingresso = Path(r"test_files/ConvertForms_Submissions__2023-05-29.csv")
+        path_foglio_uscita = Path(r"uscita.xlsx")
 
         converti(path_foglio_ingresso, path_foglio_uscita)
         self.assertTrue(path_foglio_uscita.exists())
