@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import csv
+import os
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 from enum import IntEnum, auto
@@ -79,7 +82,7 @@ mappa_requisito_indicatori: dict[str, list[Indicatore]] = {
         Indicatore(stringa_uscita='PRESCRIZIONE FARMACI CTA',
                    nome_indicatore='presc_CTA', peso=5),
         Indicatore(stringa_uscita='PREPARAZIONE CTA',
-                   nome_indicatore='prep_CTA_', peso=5)],
+                   nome_indicatore='prep_CTA', peso=5)],
     'RISCHIO FARMACI': [
         Indicatore(stringa_uscita='ETICHETTATURA LASA',
                    nome_indicatore='nc_LASA', peso=5),
@@ -99,8 +102,11 @@ mappa_requisito_indicatori: dict[str, list[Indicatore]] = {
 def cercaRigaColonna(sheet: Worksheet, nome_colonna: str) -> str | None:
     for col in range(1, sheet.max_column + 1):
         col_name = get_column_letter(col)
-        if sheet[f"{col_name}1"].value.strip() == nome_colonna:
+        valore = sheet[f"{col_name}1"].value.strip().lower()
+        if valore == nome_colonna.lower() or valore == f"{nome_colonna.lower()}_":
             return col_name
+    else:
+        assert False, f"Impossibile trovare {nome_colonna}"
 
 
 def scriviTitoliUscita(sheet: Worksheet) -> None:
@@ -109,17 +115,32 @@ def scriviTitoliUscita(sheet: Worksheet) -> None:
 
 
 def converti(path_foglio_ingresso: Path, path_foglio_uscita: Path) -> None:
-    wb: Workbook = load_workbook(str(path_foglio_ingresso))
+
+    _path_foglio_ingresso = path_foglio_ingresso
+    is_csv_file = path_foglio_ingresso.suffix == '.csv'
+    if is_csv_file:
+        _path_foglio_ingresso = Path(f"{tempfile.mkstemp()[1]}.xlsx")
+
+        wb = Workbook()
+        ws = wb.active
+
+        with open(path_foglio_ingresso, encoding='utf-8-sig') as f:
+            reader = csv.reader(f, delimiter=',')
+            for row in reader:
+                ws.append(row)
+
+        wb.save(str(_path_foglio_ingresso))
+    wb: Workbook = load_workbook(str(_path_foglio_ingresso))
 
     sheet: Worksheet = wb.worksheets[0]
     indice_id = cercaRigaColonna(sheet, 'id')
-    indice_zona_presidio = cercaRigaColonna(sheet, 'params.zona_presidio')
-    indice_professione = cercaRigaColonna(sheet, 'params.Professione')
+    indice_zona_presidio = cercaRigaColonna(sheet, 'zona_presidio')
+    indice_professione = cercaRigaColonna(sheet, 'Professione')
     indice_data = cercaRigaColonna(sheet, 'data')
-    indice_sos = cercaRigaColonna(sheet, 'params.SOS')
-    indice_soc = cercaRigaColonna(sheet, 'params.SOC')
-    indice_tipologia_presidio = cercaRigaColonna(sheet, 'params.presidio')
-    indice_sede_presidio = cercaRigaColonna(sheet, 'params.sede_presidio')
+    indice_sos = cercaRigaColonna(sheet, 'SOS')
+    indice_soc = cercaRigaColonna(sheet, 'SOC')
+    indice_tipologia_presidio = cercaRigaColonna(sheet, 'zona_presidio')
+    indice_sede_presidio = cercaRigaColonna(sheet, 'sede_presidio')
 
     wb_uscita = Workbook()
     sheet_uscita = wb_uscita.worksheets[0]
@@ -132,7 +153,7 @@ def converti(path_foglio_ingresso: Path, path_foglio_uscita: Path) -> None:
         for (requisito, indicatori) in mappa_requisito_indicatori.items():
             id_riga = sheet[f"{indice_id}{row}"].value
             zona_presidio_riga = sheet[f"{indice_zona_presidio}{row}"].value[len('zona '):]
-            data_riga = sheet[f"{indice_data}{row}"].value.strftime("%d/%m/%Y")
+            data_riga = sheet[f"{indice_data}{row}"].value
             professione_riga = sheet[f'{indice_professione}{row}'].value
             soc_riga = sheet[f'{indice_soc}{row}'].value
             sos_riga = sheet[f'{indice_sos}{row}'].value
@@ -140,19 +161,26 @@ def converti(path_foglio_ingresso: Path, path_foglio_uscita: Path) -> None:
             sede_presidio_riga = sheet[f'{indice_sede_presidio}{row}'].value
 
             for contatore_uscita, indicatore in enumerate(indicatori):
-                colonna_num = cercaRigaColonna(sheet, f"params.num_{indicatore.nome_indicatore}")
-                colonna_den = cercaRigaColonna(sheet, f'params.den_{indicatore.nome_indicatore}')
-                colonna_percentuale = cercaRigaColonna(sheet, f'params.%_{indicatore.nome_indicatore}')
+                colonna_num = cercaRigaColonna(sheet, f"num_{indicatore.nome_indicatore}")
+                colonna_den = cercaRigaColonna(sheet, f'den_{indicatore.nome_indicatore}')
+                colonna_percentuale = cercaRigaColonna(sheet, f'%_{indicatore.nome_indicatore}')
                 if colonna_num is None or colonna_den is None or colonna_percentuale is None:
                     continue
 
-                try:
-                    percentuale = float(sheet[f'{colonna_percentuale}{row}'].value)
-                    sheet_uscita[f'{get_column_letter(Colonne.PERCENTUALE_PESATA)}{riga_uscita}'].value = percentuale * indicatore.peso / 100
-                except ValueError:
-                    percentuale = 'null'
-                    sheet_uscita[f'{get_column_letter(Colonne.PERCENTUALE_PESATA)}{riga_uscita}'].value = 'null'
+                valore_den = sheet[f'{colonna_den}{row}'].value
 
+                if valore_den == '999':
+                    valore_percentuale = 'null'
+                    valore_percentuale_pesata = 'null'
+                else:
+                    try:
+                        valore_percentuale = sheet[f'{colonna_percentuale}{row}'].value
+                        valore_percentuale_pesata = float(valore_percentuale) * indicatore.peso / 100
+                    except (ValueError, TypeError):
+                        valore_percentuale = 'null'
+                        valore_percentuale_pesata = 'null'
+
+                sheet_uscita[f'{get_column_letter(Colonne.PERCENTUALE_PESATA)}{riga_uscita}'].value = valore_percentuale_pesata
                 sheet_uscita[f"{get_column_letter(Colonne.ID)}{riga_uscita}"].value = id_riga
                 sheet_uscita[f"{get_column_letter(Colonne.DATA)}{riga_uscita}"].value = data_riga
                 sheet_uscita[f'{get_column_letter(Colonne.PROFESSIONE)}{riga_uscita}'].value = professione_riga
@@ -165,8 +193,8 @@ def converti(path_foglio_ingresso: Path, path_foglio_uscita: Path) -> None:
 
                 sheet_uscita[f'{get_column_letter(Colonne.INDICATORE)}{riga_uscita}'].value = indicatore.stringa_uscita
                 sheet_uscita[f"{get_column_letter(Colonne.NUMERATORE)}{riga_uscita}"].value = sheet[f'{colonna_num}{row}'].value
-                sheet_uscita[f'{get_column_letter(Colonne.DENOMINATORE)}{riga_uscita}'].value = sheet[f'{colonna_den}{row}'].value
-                sheet_uscita[f'{get_column_letter(Colonne.PERCENTUALE)}{riga_uscita}'].value = percentuale
+                sheet_uscita[f'{get_column_letter(Colonne.DENOMINATORE)}{riga_uscita}'].value = valore_den
+                sheet_uscita[f'{get_column_letter(Colonne.PERCENTUALE)}{riga_uscita}'].value = valore_percentuale
                 sheet_uscita[f'{get_column_letter(Colonne.PESO)}{riga_uscita}'].value = indicatore.peso
                 riga_uscita += 1
 
@@ -184,6 +212,9 @@ def converti(path_foglio_ingresso: Path, path_foglio_uscita: Path) -> None:
         sheet_uscita.column_dimensions[column].width = adjusted_width
 
     wb_uscita.save(str(path_foglio_uscita))
+
+    if is_csv_file:
+        os.remove(_path_foglio_ingresso)
 
 
 class Widget(QWidget):
