@@ -139,7 +139,7 @@ def converti(path_foglio_ingresso: Path, path_foglio_uscita: Path) -> None:
     indice_data = cercaRigaColonna(sheet, 'data')
     indice_sos = cercaRigaColonna(sheet, 'SOS')
     indice_soc = cercaRigaColonna(sheet, 'SOC')
-    indice_tipologia_presidio = cercaRigaColonna(sheet, 'zona_presidio')
+    indice_tipologia_presidio = cercaRigaColonna(sheet, 'presidio')
     indice_sede_presidio = cercaRigaColonna(sheet, 'sede_presidio')
 
     wb_uscita = Workbook()
@@ -265,7 +265,8 @@ class Widget(QWidget):
         self.__bottone_converti.setEnabled(self.__path_foglio_uscita is not None and self.__path_foglio_ingresso is not None)
 
     def __selezionePathIngresso(self):
-        fnames, _ = QFileDialog.getOpenFileNames(self, "Seleziona il file di ingresso", filter="Excel (*.xls *.xlsx)")
+        fnames, _ = QFileDialog.getOpenFileNames(self, "Seleziona il file di ingresso",
+                                                 filter="Excel (*.xlsx);;CSV (*.csv)")
 
         if fname := fnames[0]:
             self.__path_foglio_ingresso = Path(fname)
@@ -274,7 +275,7 @@ class Widget(QWidget):
         self.__updateStatoBottoneConverti()
 
     def __selezionePathUscita(self):
-        fname, _ = QFileDialog.getSaveFileName(self, "Seleziona dove salvare il file", filter="Excel (*.xls *.xlsx)")
+        fname, _ = QFileDialog.getSaveFileName(self, "Seleziona dove salvare il file", filter="Excel (*.xlsx)")
 
         if fname:
             self.__path_foglio_uscita = Path(fname)
