@@ -19,11 +19,13 @@ if TYPE_CHECKING:
 class Colonne(IntEnum):
     ID = 1
     DATA = auto()
+    DATA_INVIO = auto()
     PROFESSIONE = auto()
     SOC = auto()
     SOS = auto()
     ZONA = auto()
     TIPOLOGIA_PRESIDIO = auto()
+    SETTING = auto()
     SEDE = auto()
     REQUISITO = auto()
     INDICATORE = auto()
@@ -137,9 +139,11 @@ def converti(path_foglio_ingresso: Path, path_foglio_uscita: Path) -> None:
     indice_zona_presidio = cercaRigaColonna(sheet, 'zona_presidio')
     indice_professione = cercaRigaColonna(sheet, 'Professione')
     indice_data = cercaRigaColonna(sheet, 'data')
+    indice_data_invio = cercaRigaColonna(sheet, 'created')
     indice_sos = cercaRigaColonna(sheet, 'SOS')
     indice_soc = cercaRigaColonna(sheet, 'SOC')
     indice_tipologia_presidio = cercaRigaColonna(sheet, 'presidio')
+    indice_servizio = cercaRigaColonna(sheet, 'servizio')
     indice_sede_presidio = cercaRigaColonna(sheet, 'sede_presidio')
 
     wb_uscita = Workbook()
@@ -154,6 +158,8 @@ def converti(path_foglio_ingresso: Path, path_foglio_uscita: Path) -> None:
             id_riga = sheet[f"{indice_id}{row}"].value
             zona_presidio_riga = sheet[f"{indice_zona_presidio}{row}"].value[len('zona '):]
             data_riga = sheet[f"{indice_data}{row}"].value
+            data_invio_riga = sheet[f"{indice_data_invio}{row}"].value
+            servizio_riga = sheet[f'{indice_servizio}{row}'].value
             professione_riga = sheet[f'{indice_professione}{row}'].value
             soc_riga = sheet[f'{indice_soc}{row}'].value
             sos_riga = sheet[f'{indice_sos}{row}'].value
@@ -183,6 +189,8 @@ def converti(path_foglio_ingresso: Path, path_foglio_uscita: Path) -> None:
                 sheet_uscita[f'{get_column_letter(Colonne.PERCENTUALE_PESATA)}{riga_uscita}'].value = valore_percentuale_pesata
                 sheet_uscita[f"{get_column_letter(Colonne.ID)}{riga_uscita}"].value = id_riga
                 sheet_uscita[f"{get_column_letter(Colonne.DATA)}{riga_uscita}"].value = data_riga
+                sheet_uscita[f"{get_column_letter(Colonne.DATA_INVIO)}{riga_uscita}"].value = data_invio_riga
+                sheet_uscita[f"{get_column_letter(Colonne.SETTING)}{riga_uscita}"].value = servizio_riga
                 sheet_uscita[f'{get_column_letter(Colonne.PROFESSIONE)}{riga_uscita}'].value = professione_riga
                 sheet_uscita[f"{get_column_letter(Colonne.ZONA)}{riga_uscita}"].value = zona_presidio_riga
                 sheet_uscita[f"{get_column_letter(Colonne.REQUISITO)}{riga_uscita}"].value = requisito
@@ -266,9 +274,9 @@ class Widget(QWidget):
 
     def __selezionePathIngresso(self):
         fnames, _ = QFileDialog.getOpenFileNames(self, "Seleziona il file di ingresso",
-                                                 filter="Excel (*.xlsx);;CSV (*.csv)")
+                                                 filter="CSV (*.csv);;Excel (*.xlsx)")
 
-        if fname := fnames[0]:
+        if (fname := next(iter(fnames), None)) is not None:
             self.__path_foglio_ingresso = Path(fname)
             self.__label_path_foglio_ingresso.setText(str(self.__path_foglio_ingresso))
 
